@@ -36,9 +36,7 @@ defmodule ServerlogDaemon.ChildSupervisorTest do
                 file_hash: "",
                 log_hash: "",
                 index: 666_666_666_666,
-                worker_list: [
-                  String.to_atom("#{init_arg.id}_llw")
-                ],
+                worker: String.to_atom("#{init_arg.id}_llw"),
                 server_id: init_arg.id,
                 short_name: init_arg.short_name,
                 name: "#{init_arg.id}_ftp" |> String.to_atom()
