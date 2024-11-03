@@ -11,7 +11,7 @@ defmodule ServerlogDaemon.ChildSupervisorTest do
     with_mock(Supervisor, [], init: fn _children, strategy: :one_for_one -> {:ok, "s_pid"} end) do
       init_arg = %{
         host: {1, 2, 3, 4},
-        port: 12345,
+        port: 12_345,
         user: ~c"user",
         password: ~c"password",
         id: "unique_id",

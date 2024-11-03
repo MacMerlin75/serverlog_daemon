@@ -4,22 +4,17 @@ defmodule ServerlogDaemon.FtpWorker do
   require Logger
 
   @file_path Application.compile_env(:serverlog_daemon, :file_path)
+  @file_load_warning_timeout Application.compile_env(
+                               :serverlog_daemon,
+                               :file_load_warning_timeout
+                             ) || 500_000
 
-  @doc """
-  Init the args.
-
-  ## Examples
-
-      iex> FtpWorker.init(%{})
-      {:ok, %{}}
-
-  """
   @impl true
   def init(args) do
     Process.flag(:trap_exit, true)
-    Process.send_after(self(), :load_logfile, 500)
+    timer_ref = Process.send_after(self(), :load_logfile, 500)
 
-    {:ok, args}
+    {:ok, Map.put(args, :timer_ref, timer_ref)}
   end
 
   def start_link(args) do
@@ -45,23 +40,32 @@ defmodule ServerlogDaemon.FtpWorker do
   @impl true
   def handle_info(:load_logfile, state) do
     case :timer.tc(fn -> load_logfile(state) end) do
-      {time, {:ok, file}} ->
-        if time > 500_000,
-          do: Logger.warning("loading the file took much longer than expected: #{time} µs!")
+      {time, {:ok, raw_file}} ->
+        if time > @file_load_warning_timeout,
+          do:
+            Logger.warning(
+              "loading the file took much longer than expected (#{@file_load_warning_timeout}): #{time} µs!"
+            )
 
         Logger.debug("#{state.short_name}: loaded file in #{time} µs!")
+        file = :unicode.characters_to_binary(raw_file, :latin1)
+        file_hash = calc_hash(file)
+        IO.inspect(state.file_hash, label: "file_hash")
+        IO.inspect(file_hash, label: "file_hash")
 
-        calc_hash(file)
-        |> process_logfile(file, state)
+        state
+        |> process_logfile(file_hash, file)
         |> then(fn state ->
-          Process.send_after(self(), :load_logfile, 2_000)
-          {:noreply, state}
+          timer_ref = Process.send_after(self(), :load_logfile, 1_000)
+          {:noreply, Map.put(state, :timer_ref, timer_ref)}
         end)
+
+      # {:noreply, state}
 
       {time, {:error, error}} ->
         Logger.critical("got error #{inspect(error)} in #{time} µs")
-        Process.send_after(self(), :load_logfile, 30_000)
-        {:noreply, state}
+        timer_ref = Process.send_after(self(), :load_logfile, 10_000)
+        {:noreply, Map.put(state, :timer_ref, timer_ref)}
     end
   end
 
@@ -70,7 +74,8 @@ defmodule ServerlogDaemon.FtpWorker do
     |> Base.encode16()
   end
 
-  defp load_logfile(state) do
+  @doc false
+  def load_logfile(state) do
     case :ftp.open(state.address.host, port: state.address.port) do
       {:ok, pid} ->
         with :ok <- :ftp.user(pid, state.address.user, state.address.password),
@@ -78,7 +83,7 @@ defmodule ServerlogDaemon.FtpWorker do
              {:ok, file} <- :ftp.recv_bin(pid, ~c"server.log") do
           :ftp.close(pid)
 
-          {:ok, :unicode.characters_to_binary(file, :latin1)}
+          {:ok, file}
         else
           {:error, error} ->
             :ftp.close(pid)
@@ -86,7 +91,7 @@ defmodule ServerlogDaemon.FtpWorker do
             {:error, error}
 
           whatelse ->
-            Logger.error("whatelse: #{inspect(whatelse)}")
+            Logger.critical("unexpected error: #{inspect(whatelse)}")
             :ftp.close(pid)
             {:error, whatelse}
         end
@@ -96,85 +101,62 @@ defmodule ServerlogDaemon.FtpWorker do
     end
   end
 
-  defp process_logfile(file_hash, _file, %{file_hash: state_file_hash} = state)
-       when file_hash === state_file_hash do
+  @doc false
+  def prepare_log(logfile, idx) do
+    all_lines =
+      logfile
+      # remove the \r
+      |> String.replace(~r/(\r\n)/, "\n")
+      # fix the issue when a logline includes a \n so the next line doesn't start with the timestamp
+      |> String.replace(~r/\n(\D)/, " | \\g{1}")
+      |> String.split("\n", trim: true)
+      # we omit the last line to ensure that we only process complete lines
+      |> Enum.drop(-1)
+
+    {old_lines, new_lines} = Enum.split(all_lines, idx)
+
+    %{
+      old_lines: %{lines: old_lines, hash: calc_hash(old_lines)},
+      new_lines: %{lines: new_lines, hash: calc_hash(new_lines)},
+      all_lines: %{lines: all_lines, hash: calc_hash(all_lines), index: length(all_lines)}
+    }
+  end
+
+  @doc false
+  def process_logfile(state, file_hash, file)
+
+  def process_logfile(%{file_hash: state_file_hash} = state, file_hash, _file)
+      when file_hash === state_file_hash do
     Logger.debug("file did not change, do nothing!")
     state
   end
 
-  defp process_logfile(
-         file_hash,
-         file,
-         %{file_hash: state_file_hash, index: state_index} = state
-       ) do
-    Logger.warning("process file, hash: #{file_hash}, state_hash: #{state_file_hash}")
+  def process_logfile(%{index: state_index, log_hash: state_log_hash, worker: worker} = state, file_hash, file) do
+    %{old_lines: old_lines, new_lines: new_lines, all_lines: all_lines} =
+      prepare_log(file, state_index)
 
-    log =
-      file
-      |> String.replace(~r/(\r\n)/, "\n")
-      |> String.replace(~r/\n(\D)/, " | \\g{1}")
-      |> String.split("\n", trim: true)
-      |> Enum.drop(-1)
+    {file, lines_2_process} =
+      if old_lines.hash == state_log_hash do
+        {state.file, new_lines.lines}
+      else
+        {new_filename(DateTime.utc_now(), state), all_lines.lines}
+      end
 
-    {old_lines, new_lines} = Enum.split(log, state_index)
-
-    old_lines_hash = calc_hash(old_lines)
-    log_hash = calc_hash(log)
-    index = length(log)
-
-    {path, filename, rows} = compare_lines(state, old_lines_hash, new_lines, log)
-
-    write_file(path, filename, rows)
-
-    Enum.each(state.worker_list, fn worker ->
-      GenServer.cast(worker, {:push, rows})
-    end)
+    GenServer.cast(worker, {:push, lines_2_process})
 
     state
-    |> Map.put(:path, filename)
-    |> Map.put(:filename, filename)
-    |> Map.put(:index, index)
+    |> Map.put(:file, file)
+    |> Map.put(:index, all_lines.index)
     |> Map.put(:file_hash, file_hash)
-    |> Map.put(:log_hash, log_hash)
+    |> Map.put(:log_hash, all_lines.hash)
   end
 
-  def write_file(_path, _filename, _rows) when is_nil(@file_path) do
-    Logger.warning("no file_path, no file!")
-  end
-
-  def write_file(path, filename, rows) do
-    full_path = "#{String.replace_suffix(@file_path, "/", "")}/#{path}"
-    File.mkdir_p("#{full_path}")
-
-    File.write(
-      "#{full_path}/#{filename}",
-      "#{Enum.join(rows, "\n")}\n",
-      [
-        :append
-      ]
-    )
-  end
-
-  def compare_lines(state, old_hash, new_lines, _log) when old_hash == state.log_hash,
-    do: {state.path, state.filename, new_lines}
-
-  def compare_lines(state, _old_hash, _new_lines, log) do
-    {path, file} = new_filename(state)
-    filename = "#{path}/#{file}"
-    log = ["#{DateTime.utc_now() |> DateTime.to_unix()}: +++ new file [#{filename}] +++" | log]
-    {path, file, log}
-  end
-
-  defp new_filename(%{server_id: server_id}) do
-    now = DateTime.utc_now()
-
-    dts =
-      "#{if now.day < 10, do: "0"}#{now.day}-" <>
-        "#{if now.month < 10, do: "0"}#{now.month}-#{now.year}_" <>
-        "#{if now.hour < 10, do: "0"}#{now.hour}-" <>
-        "#{if now.minute < 10, do: "0"}#{now.minute}-" <>
-        "#{if now.second < 10, do: "0"}#{now.second}"
-
-    {"/#{server_id}", "#{dts}.log"}
+  @doc false
+  def new_filename(dt, %{server_id: server_id}) do
+    "#{if dt.day < 10, do: "0"}#{dt.day}-" <>
+      "#{if dt.month < 10, do: "0"}#{dt.month}-#{dt.year}_" <>
+      "#{if dt.hour < 10, do: "0"}#{dt.hour}-" <>
+      "#{if dt.minute < 10, do: "0"}#{dt.minute}-" <>
+      "#{if dt.second < 10, do: "0"}#{dt.second}"
   end
 end
