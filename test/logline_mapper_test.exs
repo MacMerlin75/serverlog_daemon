@@ -46,5 +46,18 @@ defmodule ServerlogDaemon.LoglineMapperTest do
         )
       )
     end
+
+    test "broadcasts error when rejected driver found" do
+      assert @default_state ==
+               LoglineMapper.map(@default_state, "27125589: ==ERR: Rejected driver, 2/3 track medals")
+
+      assert_called(
+        PubSub.broadcast(
+          :pub_sub,
+          "gameserver_id_#{@default_state.server_id}",
+          {:error, @default_state.server_id, :rejected_driver, %{ts: 27_125_589, reason: "2/3 track medals"}}
+        )
+      )
+    end
   end
 end

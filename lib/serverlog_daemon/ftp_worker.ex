@@ -3,7 +3,7 @@ defmodule ServerlogDaemon.FtpWorker do
   use GenServer
   require Logger
 
-  @file_path Application.compile_env(:serverlog_daemon, :file_path)
+  @file_path Application.compile_env(:serverlog_daemon, :file_path) || "./logs/"
   @file_load_warning_timeout Application.compile_env(
                                :serverlog_daemon,
                                :file_load_warning_timeout
@@ -50,8 +50,6 @@ defmodule ServerlogDaemon.FtpWorker do
         Logger.debug("#{state.short_name}: loaded file in #{time} µs!")
         file = :unicode.characters_to_binary(raw_file, :latin1)
         file_hash = calc_hash(file)
-        IO.inspect(state.file_hash, label: "file_hash")
-        IO.inspect(file_hash, label: "file_hash")
 
         state
         |> process_logfile(file_hash, file)
@@ -131,7 +129,7 @@ defmodule ServerlogDaemon.FtpWorker do
     state
   end
 
-  def process_logfile(%{index: state_index, log_hash: state_log_hash, worker: worker} = state, file_hash, file) do
+  def process_logfile(%{index: state_index, log_hash: state_log_hash, worker: worker, server_id: server_id} = state, file_hash, file) do
     %{old_lines: old_lines, new_lines: new_lines, all_lines: all_lines} =
       prepare_log(file, state_index)
 
@@ -139,10 +137,17 @@ defmodule ServerlogDaemon.FtpWorker do
       if old_lines.hash == state_log_hash do
         {state.file, new_lines.lines}
       else
-        {new_filename(DateTime.utc_now(), state), all_lines.lines}
+        filename = new_filename(DateTime.utc_now())
+        full_path = "#{String.replace_suffix(@file_path, "/", "")}/#{server_id}"
+
+        lines = ["#{DateTime.utc_now() |> DateTime.to_unix()}: +++ new file [#{full_path}/#{filename}] +++" | all_lines.lines]
+
+        {filename, lines}
       end
 
     GenServer.cast(worker, {:push, lines_2_process})
+
+    write_file(state, file, lines_2_process)
 
     state
     |> Map.put(:file, file)
@@ -151,12 +156,26 @@ defmodule ServerlogDaemon.FtpWorker do
     |> Map.put(:log_hash, all_lines.hash)
   end
 
+  def write_file(%{server_id: server_id}, filename, rows) do
+    full_path = "#{String.replace_suffix(@file_path, "/", "")}/#{server_id}"
+    File.mkdir_p("#{full_path}")
+
+    File.write(
+      "#{full_path}/#{filename}",
+      "#{Enum.join(rows, "\n")}\n",
+      [
+        :append
+      ]
+    )
+  end
+
   @doc false
-  def new_filename(dt, %{server_id: server_id}) do
+  def new_filename(dt) do
     "#{if dt.day < 10, do: "0"}#{dt.day}-" <>
       "#{if dt.month < 10, do: "0"}#{dt.month}-#{dt.year}_" <>
       "#{if dt.hour < 10, do: "0"}#{dt.hour}-" <>
       "#{if dt.minute < 10, do: "0"}#{dt.minute}-" <>
-      "#{if dt.second < 10, do: "0"}#{dt.second}"
+      "#{if dt.second < 10, do: "0"}#{dt.second}" <>
+      ".log"
   end
 end

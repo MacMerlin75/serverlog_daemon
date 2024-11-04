@@ -19,6 +19,7 @@ defmodule ServerlogDaemon.ChildSupervisor do
                 user: init_arg.user,
                 password: init_arg.password
               },
+              file: "first.log",
               file_hash: "",
               log_hash: "",
               index: 666_666_666_666,

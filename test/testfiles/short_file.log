@@ -1,0 +1,31 @@
+0: Server starting with version 1255
+0: Installing CrashGuard Fault Handler | 
+0: Error reading cpSecret
+0: Starting server [OpenPS4] Gentlemen's Club - www.gentlemens-club.org - Next League Race: 29. Oktober, 20 Uhr ce(s)t
+0: 	EntryList entry: id 0, isAdmin 1, overrideDI 1
+0: shortFormationLap is set to false, but is a public server. Will use short formation lap!
+0: Using entry list with 1 drivers
+0: Joining during race is allowed
+0: maxCarSlots 29 exceeds the pit count for monza_2020. Setting car slots to 29
+0: SessionManager::randomizeGreenFlagTriggers: s:0.890000 e:0.950000 r:0.911049
+0: Track monza_2020 was set and updated
+0: Event changed
+0: ==ERR: Ignoring special event rules for public Multiplayer
+0: ==ERR: Ignoring special assist rules for public Multiplayer
+0: SessionManager::randomizeGreenFlagTriggers: s:0.890000 e:0.950000 r:0.933313
+0: Significant change detected, updating lobby (1|1)
+0: maxCarSlots 29 exceeds the pit count for monza_2020. Setting car slots to 29
+0: Resetting weekend to friday night
+0: Reset time to first session: 0 -> 208800
+0: SessionManager::randomizeGreenFlagTriggers: s:0.890000 e:0.950000 r:0.940321
+0: Generate_AES_256_ECB_Key: Generated new key
+0: Listening to TCP 9602 | UDP 9603
+0: UNTOLD VERSION
+186: Trying to connect to lobby (0 times, interval 10000 s)
+186: Session changed: Qualifying -> Qualifying 0
+186: Detected sessionPhase <waiting for drivers> -> <waiting for drivers> (Qualifying)
+1193: RegisterToLobby succeeded
+1196: Sent lobby registration request for monza_2020
+1208: TCPQueue now: 4
+1208: New TCP incoming pakSizeMax, 0 => 2
+1208: Updated lobby with 0 drivers

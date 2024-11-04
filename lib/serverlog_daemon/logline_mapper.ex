@@ -32,8 +32,21 @@ defmodule ServerlogDaemon.LoglineMapper do
 
         state
 
+      result = Regex.named_captures(~r/==ERR: Rejected driver, (?<reason>.*)/, message) ->
+        %{"reason" => reason} = result
+
+        Logger.warning("broadcast to gameserver_id_#{server_id}")
+
+        PubSub.broadcast(
+          @pubsub_server,
+          "gameserver_id_#{server_id}",
+          {:error, server_id, :rejected_driver, %{ts: ts, reason: reason}}
+        )
+
+        state
+
       true ->
-        # Logger.warning("ignore line: #{inspect({ts, message})}")
+        Logger.warning("ignore line: #{inspect({ts, message})}")
         state
     end
   end
