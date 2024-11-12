@@ -11,7 +11,7 @@ defmodule ServerlogDaemon.ChildSupervisorTest do
     with_mock(Supervisor, [], init: fn _children, strategy: :one_for_one -> {:ok, "s_pid"} end) do
       init_arg = %{
         host: {1, 2, 3, 4},
-        port: 12345,
+        port: 12_345,
         user: ~c"user",
         password: ~c"password",
         id: "unique_id",
@@ -33,12 +33,11 @@ defmodule ServerlogDaemon.ChildSupervisorTest do
                   user: init_arg.user,
                   password: init_arg.password
                 },
+                file: "first.log",
                 file_hash: "",
                 log_hash: "",
                 index: 666_666_666_666,
-                worker_list: [
-                  String.to_atom("#{init_arg.id}_llw")
-                ],
+                worker: String.to_atom("#{init_arg.id}_llw"),
                 server_id: init_arg.id,
                 short_name: init_arg.short_name,
                 name: "#{init_arg.id}_ftp" |> String.to_atom()

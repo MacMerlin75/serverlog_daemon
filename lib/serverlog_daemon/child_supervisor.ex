@@ -19,13 +19,13 @@ defmodule ServerlogDaemon.ChildSupervisor do
                 user: init_arg.user,
                 password: init_arg.password
               },
+              file: "first.log",
               file_hash: "",
               log_hash: "",
               index: 666_666_666_666,
-              worker_list: [
-                String.to_atom("#{init_arg.id}_llw")
-              ],
+              worker: String.to_atom("#{init_arg.id}_llw"),
               server_id: init_arg.id,
+              timer_ref: nil,
               short_name: init_arg.short_name,
               name: "#{init_arg.id}_ftp" |> String.to_atom()
             }
@@ -44,6 +44,11 @@ defmodule ServerlogDaemon.ChildSupervisor do
               server_id: init_arg.id,
               short_name: init_arg.short_name,
               queue: [],
+              worker_state: %{
+                last_line: "",
+                last_timestamp: DateTime.from_unix!(0),
+                count: 0
+              },
               state: %{conn_req: nil}
             }
           ]
