@@ -81,7 +81,7 @@ defmodule ServerlogDaemon.FtpWorker do
              {:ok, file} <- :ftp.recv_bin(pid, ~c"server.log") do
           :ftp.close(pid)
 
-              {:ok, file}
+          {:ok, file}
         else
           {:error, error} ->
             :ftp.close(pid)
