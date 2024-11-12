@@ -51,24 +51,34 @@ defmodule ServerlogDaemon.StateWorker do
   end
 
   defp process_gameserver(state, gameserver, _state_gameserver) do
-    Logger.warning("OK, stop -> start")
     pid = get_in(state, [gameserver.id, :pid])
+    state_gameserver = get_in(state, [gameserver.id, :gameserver])
 
-    stop_gameserver_process(state, gameserver, pid)
-    |> start_gameserver_process(gameserver)
+    gs_root = Map.take(gameserver, [:ip, :port, :short_name, :user, :password])
+    state_gs_root = Map.take(state_gameserver, [:ip, :port, :short_name, :user, :password])
+
+    if gs_root != state_gs_root do
+      Logger.debug("OK, stop -> start")
+
+      stop_gameserver_process(state, gameserver, pid)
+      |> start_gameserver_process(gameserver)
+    else
+      Logger.debug("root did not change, do nothing")
+      state
+    end
   end
 
   # defp stop_gameserver_process(state, _gameserver, nil), do: state
 
   defp stop_gameserver_process(state, gameserver, pid) do
-    Logger.warning("try 2 stop process #{inspect(pid)}")
+    Logger.debug("try 2 stop process #{inspect(pid)}")
 
     case DynamicSupervisor.terminate_child(ServerlogDaemon.DynamicSupervisor, pid) do
       :ok ->
         Map.delete(state, gameserver.id)
 
       {:error, :not_found} ->
-        Logger.critical("process not found? Ignore that …")
+        Logger.debug("process not found? Ignore that …")
         Map.delete(state, gameserver.id)
     end
   end

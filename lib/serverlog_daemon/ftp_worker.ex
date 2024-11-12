@@ -81,7 +81,7 @@ defmodule ServerlogDaemon.FtpWorker do
              {:ok, file} <- :ftp.recv_bin(pid, ~c"server.log") do
           :ftp.close(pid)
 
-          {:ok, file}
+              {:ok, file}
         else
           {:error, error} ->
             :ftp.close(pid)
@@ -129,7 +129,12 @@ defmodule ServerlogDaemon.FtpWorker do
     state
   end
 
-  def process_logfile(%{index: state_index, log_hash: state_log_hash, worker: worker, server_id: server_id} = state, file_hash, file) do
+  def process_logfile(
+        %{index: state_index, log_hash: state_log_hash, worker: worker, server_id: server_id} =
+          state,
+        file_hash,
+        file
+      ) do
     %{old_lines: old_lines, new_lines: new_lines, all_lines: all_lines} =
       prepare_log(file, state_index)
 
@@ -140,7 +145,10 @@ defmodule ServerlogDaemon.FtpWorker do
         filename = new_filename(DateTime.utc_now())
         full_path = "#{String.replace_suffix(@file_path, "/", "")}/#{server_id}"
 
-        lines = ["#{DateTime.utc_now() |> DateTime.to_unix()}: +++ new file [#{full_path}/#{filename}] +++" | all_lines.lines]
+        lines = [
+          "#{DateTime.utc_now() |> DateTime.to_unix()}: --- new file [#{full_path}/#{filename}] ---"
+          | all_lines.lines
+        ]
 
         {filename, lines}
       end

@@ -14,6 +14,11 @@ defmodule ServerlogDaemon.LoglineWorkerTest do
     timer_ref: nil,
     server_id: "123_a_server_id",
     short_name: "123",
+    worker_state: %{
+      last_line: "",
+      last_timestamp: DateTime.from_unix!(0),
+      count: 12
+    },
     queue: [],
     state: %{conn_req: nil}
   }
@@ -36,6 +41,32 @@ defmodule ServerlogDaemon.LoglineWorkerTest do
 
   test "does nothing special @ termination" do
     assert :normal = LoglineWorker.terminate(:broken, %{})
+  end
+
+  test "sends worker state" do
+    with_mocks([
+      {PubSub, [], [broadcast: fn :pub_sub, _server_id, _data -> :ok end]}
+    ]) do
+      queue =
+        1..42
+        |> Enum.map(fn x ->
+          "#{String.pad_leading(to_string(x), 10, "0")}: line ##{x}"
+        end)
+
+      state =
+        @default_state
+        |> Map.put(:queue, queue)
+
+      LoglineWorker.handle_info(:send_worker_state, state)
+
+      assert_called(
+        PubSub.broadcast(
+          :pub_sub,
+          "gameserver_id_123_a_server_id",
+          {:data, "123_a_server_id", :worker_state, state.worker_state}
+        )
+      )
+    end
   end
 
   describe "handle_info:read_logline" do

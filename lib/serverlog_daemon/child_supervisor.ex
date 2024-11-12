@@ -44,6 +44,11 @@ defmodule ServerlogDaemon.ChildSupervisor do
               server_id: init_arg.id,
               short_name: init_arg.short_name,
               queue: [],
+              worker_state: %{
+                last_line: "",
+                last_timestamp: DateTime.from_unix!(0),
+                count: 0
+              },
               state: %{conn_req: nil}
             }
           ]
